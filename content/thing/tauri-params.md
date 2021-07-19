@@ -337,17 +337,73 @@ higher level crate to provide it. _A uniform higher level crate would make it ea
 variety of Rust knowledge, but from this point on I will assume you have read and understood [The Rust Book] along with
 a fair amount of practice.
 
-### 
+### Converting at the Boundaries
 
-### Wrapping Tauri Core
+We mentioned in the [custom types] section that existing custom types would still work, but may need to be converted to
+a more suitable type beforehand. I will showcase how this could work now with the following example of a custom event
+type.
 
-Do I really want to go into this for an example? The code is rather in depth and complex compared to others.
+```rust
+#[derive(Copy, Clone)]
+enum MyEvent {
+    Start,
+    Restart,
+    Stop
+}
+```
+
+Previously we took `Display`, so any type that implemented it would be accepted. Now, we have `Into<String>`, meaning we
+should instead implement `From` to enable the conversion. The implementation may look something like this.
+
+```rust
+impl From<MyEvent> for String {
+    fn from(event: MyEvent) -> String {
+        match event {
+            MyEvent::Start => "start",
+            MyEvent::Restart => "restart",
+            MyEvent::Stop => "stop",
+        }.into()
+    }
+}
+```
+
+This implementation just creates a `String` from a `&'static str` in order to create a string from a value of the enum
+on-demand. In places that previously took `P::Event` that now take `Into<String>`, we can now use the owned value of the
+type directly. You would also be able to use references to these events if wished by additionally
+implementing `impl From<&MyEvent> for String`. In a similar vein, you can implement `AsRef<str>` to make it easy to
+create borrowed strings in places that now take `&str`.
+
+```rust
+impl AsRef<str> for MyEvent {
+    fn as_ref(&self) -> &str {
+        match self {
+            MyEvent::Start => "start",
+            MyEvent::Restart => "restart",
+            MyEvent::Stop => "stop",
+        }
+    }
+} 
+```
+
+Now, if we have an event to pass into e.g. `window.event(&my_event, "message")`, we can instead
+call `window.event(my_event.as_ref(), "message")`.
+
+This method can help you continue to use existing types in your codebase, but still relies on you not accidentally
+converting the wrong item that implements `Into<String>` when passing them to `tauri` APIs. An example is accidentally
+passing an event where you meant to pass a window label.
+
+### Other
+
+[This section](#stronger-typing-now) may expand in the future with more in-depth examples. These examples will more
+closely align to methodologies that will be tried out in the "higher level" crate. The two expected to be explored
+currently is extending the `tauri` core types with additional traits, and wrapping the entirety of the core in new
+strongly typed items.
 
 [Tauri]: https://github.com/tauri-apps/tauri
 
 [wry]: https://github.com/tauri-apps/wry
 
-[trait bound]: https://doc.rust-lang.org/rust-by-example/generics/bounds.html\
+[trait bound]: https://doc.rust-lang.org/rust-by-example/generics/bounds.html
 
 [Tauri Runtime]: https://docs.rs/tauri-runtime
 
@@ -372,3 +428,5 @@ Do I really want to go into this for an example? The code is rather in depth and
 [Electron]: https://www.electronjs.org/
 
 [The Rust Book]: https://doc.rust-lang.org/book/
+
+[custom types]: #custom-types
