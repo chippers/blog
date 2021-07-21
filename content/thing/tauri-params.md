@@ -9,25 +9,24 @@ tags=["Rust", "Tauri"]
 
 +++
 
-In the latest beta release (1.0.0-beta.5) of [Tauri], we made a breaking change that removed the
-`Params` trait. `Params` was a new addition in the first beta release candidate to utilize user defined types for Tauri
-APIs along with an additional hope to support future non-breaking features with user defined types. The goal of user
-defined types was being able to have strong types, such as an enum, represent things like events or window labels
-instead of a string to catch mistakes during compilation. It helped prevent accidentally passing in a typo or
+In the latest beta release of [Tauri] (1.0.0-beta.5), we made a decision to remove the `Params` trait even though it
+causes a breaking change. As background, `Params` was added to the first beta release candidate to utilize user defined
+types for Tauri APIs along with an additional hope to support user defined types in future non-breaking features. The
+goal of user defined types was being able to have strong types, such as an enum, represent things like events or window
+labels instead of strings to catch mistakes during compilation. It helped prevent accidentally passing in a typo or
 non-existent window, but does not help logic errors such as passing in `MyWindow::Primary` when you meant
 `MyWindow::Secondary`.
 
-## Removing `Params` Existing Applications
+## Dropping Existing `Params`
 
-If you are reading this article because you want to know how to remove your usages of `Params` from your code then you
-might be interested in one or both of the next sections. There were two ways of using `Params` before it's removal, the
-most common use case was needing to specify it as a trait bounds for your own functions/methods. The other way was
-utilizing the user defined types of `Params` by supplying custom types to the builder. I will go over solutions to these
-in order.
+If you are reading this article because you want to know how to remove `Params` from your codebase then you might be
+interested in one or both of the next sections. The most common way to use `Params` was in specifying it
+in [trait bound]s for your own functions/methods. The other way was supplying custom types to the builder. I will go
+over solutions to these in order.
 
 ### Trait Bounds
 
-If you are using `Params` as a [trait bound], then you likely have code that looks vaguely like the following:
+If you used `Params` as a [trait bound], then you likely have code that looks vaguely like the following:
 
 ```rust
 fn send_init_event<P: Params<Event=String>>(window: &Window<P>) {
@@ -46,7 +45,7 @@ fn send_init_event(window: &Window) {
 ```
 
 <details>
-<summary>I am using a custom runtime</summary>
+<summary>Expand me if you have a custom `Runtime`</summary>
 
 In the case that you **do** happen to be using a custom `Runtime` (which we would love to hear about), then either of
 the following should work fine.
@@ -66,8 +65,8 @@ fn send_init_event_bounds<R: Runtime>(window: &Window<R>) {
 ### Custom Types
 
 The second way to use `Params` was to pass custom types to `Builder::new()` to utilize custom types for events, window
-labels, and more. It is not necessary to remove these custom types completely, but they may need to be converted to a
-string or string slice when passing them into API functions now. Additionally, you will need to drop them as arguments
+labels, and more. It is not necessary to remove these custom types completely, but they may now need to be converted to
+a string or string slice when passing them into API functions now. Additionally, you will need to drop them as arguments
 for the builder.
 
 The way to write the builder if you are using [wry] is:
@@ -95,7 +94,7 @@ not necessary._
 ### The Original Goals
 
 These were the motivating factors for adding `Params` to [`tauri`], not the motivating factors behind [Tauri] itself. I
-will be referring to these later as the original goals.
+will refer to these later as the original goals.
 
 1. Ability to enforce the correct user defined type at compile time.
 2. Enable the use of lightweight types such as those implementing `Copy`.
@@ -130,8 +129,8 @@ pub trait Params: private::ParamsBase + 'static {
 ```
 
 [`Tag`] and [`MenuId`] represent string-able types, which is important to keep in mind in the future. The trait
-was [sealed] to allow us to expand (not change) the trait in the future without breaking changes. You had to use the
-builder to actually set the types, which became tedious over time. For example, the `Default` implementation:
+was [sealed] to allow us to expand (not change) the trait in the future without causing breaking changes. You had to use
+the builder to actually set the types, which became tedious over time. For example, the `Default` implementation:
 
 ```rust
 /// Make `Wry` the default `Runtime` for `Builder`
@@ -143,7 +142,7 @@ impl<A: Assets> Default for Builder<String, String, String, String, A, crate::Wr
 }
 ```
 
-`Builder` was complex generic-wise due to the "you must declare everything at once" format. This complexity focused on
+`Builder` was complex generic-wise due to its "you must declare everything at once" format. This complexity focused on
 the builder and left other items to only need to worry about having `Params`. Except, it kind of didn't. Users still
 needed to add a `Params` bound to their own functions and methods they were creating with the associated type that they
 were trying to use. Even more frustrating, it required it even for `String` even though it was the default.
@@ -164,8 +163,8 @@ error[E0308]: mismatched types
         found reference `&str`
 ```
 
-This is because `Window::emit` knows that it should take `P::Event` but in that function definition, it doesn't know
-what type that resolves to. For every method used that uses an associated type, the concrete type needs to be specified
+`Window::emit` knows that it should take `P::Event` from the function definition, but it doesn't know the concrete type
+that it should resolve to. For every method used that uses an associated type, the concrete type needs to be specified
 in order to compile. If the `say_hi_to_bob` function also contained methods that used the window label and menu id, you
 can see how it gets tedious quickly:
 
@@ -186,18 +185,22 @@ leaving some signatures very complex. There is still a trick to reduce verbosity
 
 ```rust
 // Event, Window, Menu, and SystemMenu are existing custom types
-trait Params: tauri::Params<Event=Event, Label=Window, MenuId=Menu, SystemTrayMenuId=SystemMenu> {}
+trait Params:
+tauri::Params<Event=Event, Label=Window, MenuId=Menu, SystemTrayMenuId=SystemMenu>
+{}
 
-impl<P> Params for P where P: tauri::Params<Event=Event, Label=Window, MenuId=Menu, SystemTrayMenuId=SystemMenu> {}
+impl<P> Params for P where
+    P: tauri::Params<Event=Event, Label=Window, MenuId=Menu, SystemTrayMenuId=SystemMenu>
+{}
 ```
 
-You could then use that trait around your application code and only need to worry about specifying the types in the
-trait definition instead of all around your application. So why was `Params` still problematic? Sure it was verbose in
-the builder and your trait helper, but was that really enough to remove it? From a code perspective, this was solved. We
-had solutions for most of the verbosity problems encountered during development, but an equal or greater problem was the
-mental complexity it introduced. For users unfamiliar with Rust, and sometimes newer to programming in general, this was
-a massive pain point. They could use a `&String` or a `&str` with `window.emit(...)` in their code but figuring that out
-from the signatures was not easy. For example, here is the same method with and without `Params`:
+You could then use that helper trait around your application code and only need to worry about specifying the types in
+the trait definition instead of throughout your application. So why was `Params` still problematic? Sure it was verbose
+in the builder and your trait helper, but was that really enough to remove it? From a code perspective, this was solved.
+We had solutions for most of the verbosity problems encountered during development, but an equal or greater problem was
+the mental complexity it introduced. For users unfamiliar with Rust, and sometimes newer to programming in general, this
+was a massive pain point. A user could use a `&String` or a `&str` with `window.emit(...)` in their code but figuring
+that out from the signatures was not easy. For example, here is the same method with and without `Params`:
 
 ```rust
 // without Params
@@ -236,8 +239,8 @@ the documentation that many users find difficult to grok. Having multiple of the
 the confusion.
 
 So what about having these custom types only on items they affect and dropping `Params` if it wasn't working out well?
-Unsurprisingly, this was the first approach but quickly grew unmanageable as most items all the generics due to the
-flexibility of the API. This flexibility comes in many forms, the core of which involves allowing a custom webview
+Unsurprisingly, this was the first approach but quickly grew unmanageable as most items required all the generics due to
+the flexibility of the API. This flexibility comes in many forms, the core of which involves allowing a custom webview
 runtime to be set (we provide [wry] by default).
 
 The [Tauri Runtime] is a layer between [Tauri] and the underlying webview runtime. It provides the core traits that
@@ -254,9 +257,9 @@ other types. This is the problem that `Params` solved for the [original goals].
 
 ## Correcting the Course for the Future
 
-We still want the items described in the [original goals], so how do we achieve it without `Params` or making a mess of
-generics in the [`tauri`] crate? This is an article about the removal of `Params`, so we definitely have found our way
-forward, but what drove the decision?
+We're still motivated by the factors described in the [original goals], so how do we achieve them without `Params` or
+making a mess of generics in the [`tauri`] crate? This is an article about the removal of `Params`, so we have already
+found our way forward, but what drove the decision?
 
 ### Downsides of the Original Goals
 
@@ -264,34 +267,37 @@ What did our implementation of the [original goals] with `Params` make us compro
 
 #### Complicated API
 
-The API resulting from `Params` (and similar solutions we discussed before) was much too complex for most Rust beginners
-and some intermediate users. An important goal for [Tauri] is to be welcoming to newcomers in the community and
-ecosystem. Due to our stack enabling native applications with web technology, we naturally see a lot of developers who
-aren't familiar with Rust but know JavaScript/TypeScript. Many are already familiar with other platforms that enable
-cross-platform desktop applications build with web technology, such as [Electron], and are interested in some benefits
-that [Tauri] offers.
+The resulting API was much too complex for most Rust beginners and some intermediate users. An important goal
+for [Tauri] is to be welcoming to newcomers in the community and ecosystem. Due to our stack enabling native
+applications with web technology, we naturally see a lot of developers who aren't familiar with Rust but know
+JavaScript/TypeScript. Many are already familiar with other platforms that enable cross-platform desktop applications
+build with web technology, such as [Electron], and are interested in some benefits that [Tauri] offers.
 
 #### Maintenance
 
-This is the downside that actually sparked the Pull Request that removed `Params`. While not more or less important than
-other downsides, it was the cause for us to re-evaluate the implementation of the [original goals]. The internal code
-had turned complex in a number of places alongside triggering lints like `clippy::type_complexity`. Places where we
+This is the downside that actually sparked [the Pull Request that removed `Params`]. While not more or less important
+than other downsides, it was the cause for us to re-evaluate the implementation of the [original goals]. The internal
+code had turned complex in a number of places alongside triggering lints like `clippy::type_complexity`. Places where we
 accepted references to custom types had many bounds to consider and any type that used `Params` had to deal with the
 associated types. Code that parsed strings into the custom types were also surrounded by boilerplate error handling to
 panic if the custom type `FromStr` implementation didn't handle unknown string internally.
 
+A small metric to show some of this internal code complexity is the line change count
+from [the Pull Request that removed `Params`]. There were `2,264` lines changed, broken down into `+855 -1,409`. That
+represents roughly 40% less code in places that had to deal with `Params`. <sup>_Keep in mind that lines of code is a
+terrible metric and doesn't represent quality, only quantity._</sup>
+
 ### Re-evaluating
 
-We had some internal discussion of ways to shed all this complexity from implementing the [original goals] without
-losing the benefit of those goals. In the end, a core idea took hold - **these strong user defined types do _not_ need
-to be part of the [`tauri`] crate**. In fact, all the goals can be more-or-less effectively implemented by another
-higher level crate which wraps the core.
+As we had internal discussion on ways to shed all this complexity and still achieve the [original goals], a core idea
+took hold - **these strong user defined types do _not_ need to be part of the [`tauri`] crate**. In fact, all the goals
+can be more-or-less effectively implemented by another higher level crate which wraps the core.
 
-This is because of the underlying [Tauri Runtime] requirements which use strings to pass messages around. If we store
-custom types in core, then at some point we have to turn it into a string to pass it down to the underlying runtime. If
-we forgo inserting custom types into core and settle on strings, we can simplify the exposed core API while still
-allowing at a higher level to use better types. A few immediate benefits of only using strings is a much simpler API and
-less complex code to deal with in core. Do we lose any benefits? Not really.
+This is because of the underlying [Tauri Runtime] requirements which use strings to pass messages. If we store custom
+types in core, then at some point we have to turn it into a string to pass it down to the underlying runtime. If we
+forgo inserting custom types into core and settle on strings, we can simplify the exposed core API while still allowing
+at a higher level to use better types. A few immediate benefits of only using strings is a much simpler API and less
+complex code to deal with in core. Do we lose any benefits? Not really.
 
 Let's talk about the first goal, enforcing the correct type at compile time. A higher level crate can just as
 effectively enforce this by wrapping the current core API. This is effectively moving the `Params` trait out of core and
@@ -300,8 +306,8 @@ into a separate crate and handling all strong typing there. A (maybe) surprising
 the core itself. Additionally, there are other patterns that would allow us to expose it unsealed (AKA users can
 implement the trait) to prevent the headache of providing a private concrete type for the sealed trait. Part of this is
 possible by allowing the higher level crate to be less stable than [`tauri`] itself, allowing for more API evolution.
-The stability of the core crate is extremely important because we want to keep the guts of [`tauri`] without excessive
-major changes after we perform the third-party security audit of the core codebase.
+The stability of the core crate [`tauri`] is of utmost importance, so we wish to avoid excessive major changes following
+the third-party security audit of the core codebase.
 
 The second goal is about enabling the use of lightweight types. This means type that can be passed relatively
 efficiently with `Copy`, such as enums that only contain `Copy` types. This turned out to not matter so much in the core
@@ -325,17 +331,17 @@ strongly typed APIs in various manners.
 To recap, a higher level crate can provide an acceptably less-stable API to perform the same compile-time type
 checking. [`tauri`] core can stay the same, which is beneficial for the audit that will be performed on it.
 
-I've been calling it the concept of stronger type checking in another crate as a higher level crate. This "higher level
-crate" does not currently exist as an available library, but may soon in the future based on lessons we've learned with
-current strong typing mechanics. Nevertheless, these concepts do not need to be exposed as a higher level crate in order
-to take advantage of the stronger typing.
+I've been referring to the concept of stronger type checking in another crate as a higher level crate. This "higher
+level crate" does not currently exist as an available library, but may soon exist in the future based on lessons we've
+learned with current strong typing mechanics. Nevertheless, these concepts do not need to be exposed as a higher level
+crate in order to take advantage of the stronger typing.
 
 ## Stronger Typing, Now
 
-I will go over various methods that you can take advantage of directly in your own application code without needing a
-higher level crate to provide it. _A uniform higher level crate would make it easier, however._ The methods require a
-variety of Rust knowledge, but from this point on I will assume you have read and understood [The Rust Book] along with
-a fair amount of practice.
+Here I will cover various methods that you can take advantage of directly in your own application code without needing a
+higher level crate(_a higher level crate would make it easier, however_). The methods require a variety of Rust
+knowledge, but from this point on I will assume you have read and understood [The Rust Book] along with a fair amount of
+practice.
 
 ### Converting at the Boundaries
 
@@ -399,6 +405,11 @@ closely align to methodologies that will be tried out in the "higher level" crat
 currently is extending the `tauri` core types with additional traits, and wrapping the entirety of the core in new
 strongly typed items.
 
+I was originally planning on showcasing those concepts here in this article, but I found myself consistently expanding
+the sections with more and more code along with explanations alongside them. With so much code needed, I believe it more
+wise to first write them out completely in an experimental crate with fleshed out documentation and perhaps an
+accompanying blog post. I will try to remember to add links to them here when they are done.
+
 [Tauri]: https://github.com/tauri-apps/tauri
 
 [wry]: https://github.com/tauri-apps/wry
@@ -430,3 +441,5 @@ strongly typed items.
 [The Rust Book]: https://doc.rust-lang.org/book/
 
 [custom types]: #custom-types
+
+[the Pull Request that removed `Params`]: https://github.com/tauri-apps/tauri/pull/2191
