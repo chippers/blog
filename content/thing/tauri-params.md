@@ -45,7 +45,7 @@ fn send_init_event(window: &Window) {
 ```
 
 <details>
-<summary>Expand me if you have a custom `Runtime`</summary>
+<summary>Expand me if you have a custom Runtime</summary>
 
 In the case that you **do** happen to be using a custom `Runtime` (which we would love to hear about), then either of
 the following should work fine.
@@ -72,7 +72,7 @@ for the builder.
 The way to write the builder if you are using [wry] is:
 
 ```rust
-tauri::Builder::default ()
+tauri::Builder::default()
 ```
 
 Or, if you are using a custom runtime (which we would love to hear about):
@@ -271,7 +271,7 @@ The resulting API was much too complex for most Rust beginners and some intermed
 for [Tauri] is to be welcoming to newcomers in the community and ecosystem. Due to our stack enabling native
 applications with web technology, we naturally see a lot of developers who aren't familiar with Rust but know
 JavaScript/TypeScript. Many are already familiar with other platforms that enable cross-platform desktop applications
-build with web technology, such as [Electron], and are interested in some benefits that [Tauri] offers.
+built with web technology, such as [Electron], and are interested in some benefits that [Tauri] offers.
 
 #### Maintenance
 
